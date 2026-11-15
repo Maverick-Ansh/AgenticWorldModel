@@ -46,7 +46,7 @@ def design(L, prev_logpm, tr0):
     tr = tr0.copy()
     for t in range(T):
         for j, tau in enumerate(TAUS):
-            sl = slice(1 + j * K, 1 + (j + 1) * K)
+            sl = slice(j * K, (j + 1) * K)                    # tr has no intercept column
             tr[:, sl] += (L[:, t] - tr[:, sl]) / tau
         X[:, t, 1:] = tr
     return X, tr
@@ -191,6 +191,6 @@ class WorldModel:
             Nd = np.minimum(Nd * (1 - 1 / 90) + sav, N)
             P = P + (price[..., t] - P) / 30
             mrr[..., t] = P * (N - Nd) + .5 * P * Nd
-            spend += ads[..., t] + 1.5 * cred[..., t] * S
+            spend += ads[..., t] + .5 * cred[..., t] * S
         G = mrr[..., 60:90].mean(-1) - (spend + cost1) / 3
         return G, mrr[..., 29]

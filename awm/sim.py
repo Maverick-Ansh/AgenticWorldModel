@@ -42,8 +42,8 @@ def sample_params(n_alpha=16, n_gamma=16, seed=0):
     full = lambda v: np.full(B, float(v))
     return dict(
         alpha=al * 1., Dbar=np.where(al, 450., 900.), p0=np.where(al, 49., 19.), sigma=full(.025),
-        q_ad=np.where(al, U(.2, .6), U(0, .05)), kappa=U(.2, .8), r_ret=U(.1, .9), buzz=U(0, .35),
-        eps_c=U(.5, 2.), eps_h=U(.005, .06), bundle=U(1., 1.35), L_new=U(.85, 1.5),
+        q_ad=np.where(al, U(.5, 2.), U(0, .05)), kappa=U(.1, .7), r_ret=U(.1, .9), buzz=U(0, 1.),
+        eps_c=U(.5, 2.), eps_h=U(.005, .06), bundle=U(.9, 1.3), L_new=U(.8, 1.4), g0n=U(0, .004),
         beta_e=U(2e-4, 6e-4), e0=np.where(al & (rng.uniform(size=B) < .7), 12., 1.), act_resp=U(0., 1.5),
         g0=U(5e-4, 4e-3), c0=full(.17), pi0=full(.004), h0y=full(.010), h0m=full(.0045), delta=full(.0015),
         rho=full(.35))
@@ -116,14 +116,15 @@ def step(s, p, z, day):
     N = Ny + Nm + Nd
     G = np.where(s['save'] >= 2, np.minimum(draw(p['g0'] * (1 + 20 * Nd / np.maximum(N, 1)) * Nm, z[:, 8]),
                                             Nm - pull - Rm), 0.)            # fake cancellations
+    Gy = np.where(s['save'] >= 1, np.minimum(p['g0n'] * Ny, Ny - mat - Ry), 0.)   # newer subs game it too
     Ndo = Nd / 90
     Rd = np.minimum((p['h0m'] + hb) * Nd, Nd - Ndo)
     exits = (leave - conv) + (Kout - ret) + (Ry - sy) + (Rm - sm) + Rd
     s['T'] = T + S + ret - leave - pkb
     s['K'] = K + pkb + div + pull - Kout
-    s['Ny'] = Ny + C - Ry - mat
+    s['Ny'] = Ny + C - Ry - mat - Gy
     s['Nm'] = Nm + mat - Rm - G - pull + Ndo
-    s['Nd'] = Nd + sy + sm + G - Ndo - Rd
+    s['Nd'] = Nd + sy + sm + G + Gy - Ndo - Rd
     s['cum_in'] = s['cum_in'] + S
     s['cum_out'] = s['cum_out'] + exits
     price = p['p0'] * s['pm']
@@ -135,12 +136,12 @@ def step(s, p, z, day):
     s['fix_done'] = np.where(done, 1., s['fix_done'])
     mrr = s['P'] * (s['Ny'] + s['Nm']) + .5 * s['P'] * s['Nd']
     packs = pkb + div + pull
-    spend = spend_ads + 1.5 * s['cred'] * S + s['due']
+    spend = spend_ads + .5 * s['cred'] * S + s['due']
     s['due'] = np.zeros_like(s['due'])
     rev = mrr / 30 + .6 * price * (1 - disc) * packs - spend
     out = np.empty((len(V), len(OBS)))
     for k, v in (('visits', V), ('visits_ad', Vad), ('signups_org', So), ('signups_ad', Sa), ('activations', A),
-                 ('new_subs', C), ('cancels', (Ry - sy) + (Rm - sm) + Rd + pull), ('saves', sy + sm + G),
+                 ('new_subs', C), ('cancels', (Ry - sy) + (Rm - sm) + Rd + pull), ('saves', sy + sm + G + Gy),
                  ('packs', packs), ('error_rate', s['e']), ('list_price', price), ('sub_mrr', mrr),
                  ('subs', s['Ny'] + s['Nm'] + s['Nd']), ('spend', spend), ('revenue', rev)):
         out[:, O[k]] = v
