@@ -106,7 +106,10 @@ class HJEPA(nn.Module):
     def __init__(self, levels=3, d=128, lam=10.):
         super().__init__()
         self.L, self.d, self.lam, self.s = levels, d, lam, 2
-        self.E = nn.ModuleList([MLP(FD, d)] + [MLP(d, d) for _ in range(levels - 1)])
+        # encoders end in a non-affine LayerNorm: at a near-zero init SIGReg's gradient vanishes (cos(tP) is flat
+        # at P = 0; the first smoke run sat at z-std 0.03), and unit-norm latents can never shrink to a point
+        enc = lambda i: nn.Sequential(MLP(i, d), nn.LayerNorm(d, elementwise_affine=False))
+        self.E = nn.ModuleList([enc(FD)] + [enc(d) for _ in range(levels - 1)])
         self.A = nn.ModuleList([nn.Linear(NA, d, bias=False)] + [MLP(2 * d, d) for _ in range(levels - 1)])
         self.F = nn.ModuleList([Pred(d) for _ in range(levels)])
         self.probe = nn.ModuleList([nn.Linear(d, 2) for _ in range(levels)])
