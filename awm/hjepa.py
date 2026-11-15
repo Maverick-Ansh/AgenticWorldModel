@@ -46,13 +46,16 @@ def featurize(wk, ref, lev):
     return np.nan_to_num(f, nan=0., posinf=0., neginf=0.)
 
 
-def gen(n, seed, weeks=80):
-    """Offline dataset: n businesses with fresh hidden parameters, random weekly moves and rollbacks."""
+def gen(n, seed, weeks=80, raw=False):
+    """Offline dataset: n businesses with fresh hidden parameters, random weekly moves and rollbacks.
+    raw=True also returns weekly raw facts and per-week control snapshots (for rebuilding text packs)."""
+    from .schema import CONTROL_KEYS
     p = sample_params(n // 2, n - n // 2, seed)
     s = init_state(p, seed=seed)
     tape = make_tape(seed + 1, n, weeks * 7)
     rng = np.random.default_rng(seed + 2)
     Wk, LVw, A = np.zeros((n, weeks, len(OBS))), np.zeros((n, weeks, len(LEVERS))), np.zeros((n, weeks), int)
+    Cs = {c: np.zeros((n, weeks)) for c in CONTROL_KEYS}
     for k in range(weeks):
         g = 7 * k
         a = np.where(rng.random(n) < .5, rng.integers(1, 16, n), 0)
@@ -61,11 +64,14 @@ def gen(n, seed, weeks=80):
         a = np.where(rb, 16 + kk, a)
         apply(s, np.where(a >= 16, ROLLBACK + a - 16, a), g)
         A[:, k] = a
+        for c in Cs:
+            Cs[c][:, k] = s[c]
         acc = 0
         for t in range(7):
             acc = acc + step(s, p, tape[:, g + t], g + t)
         Wk[:, k], LVw[:, k] = acc / 7, levers(s, g + 6)
-    return featurize(Wk, Wk[:, :4].mean(1, keepdims=True), LVw), A
+    X = featurize(Wk, Wk[:, :4].mean(1, keepdims=True), LVw)
+    return (X, A, Wk, Cs) if raw else (X, A)
 
 
 def probe_targets(x):
@@ -218,7 +224,7 @@ def plan(model, x, a1, mask, N=16, iters=40, lr=.1, flat_H=12, top_H=3):
     return torch.softmax(p[:, 0] - 1e4 * mask, -1).argmax(-1).cpu().numpy()
 
 
-def evaluate(W, model, name, dev='cuda', log=print):
+def evaluate(W, model, name, dev='cuda', log=print, planner=None):
     """Closed-loop: plan each week from the arm's own receipted facts, execute through the platform."""
     from .runner import Arm, execute, day_step, H, WEEKS
     from .sim import LIVE_DAYS, D_TOT
@@ -242,7 +248,8 @@ def evaluate(W, model, name, dev='cuda', log=print):
         mask = np.zeros((B, NA), bool); mask[:, IDX['PRICE+20']] = True                 # owner guardrail
         mask[:, 16:] = ~(act & REVERSIBLE[None])                                          # only live moves roll back
         t0 = time.time()
-        mv = plan(model, x, a1, torch.tensor(mask, device=dev))
+        mt = torch.tensor(mask, device=dev)
+        mv = plan(model, x, a1, mt) if planner is None else planner(x, a1, mt, a, g)
         tsum += time.time() - t0
         code = np.where(mv >= 16, ROLLBACK + mv - 16, mv)
         done = execute(a, code, g)
