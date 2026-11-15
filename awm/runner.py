@@ -205,8 +205,9 @@ def myopic_rollback(a, g, metric):
 
 
 def admit(D, props, bar, valid):
-    """The gate: admit candidates whose pessimistic (20th pct) forecast gain beats the bar."""
-    mean, q20 = D.mean(2), np.quantile(D, .2, axis=2)
+    """The gate: admit candidates whose pessimistic (20th pct) forecast gain beats the bar; rank the admitted
+    by MEDIAN gain (the mean is dominated by lognormal tails of poorly identified levers)."""
+    mean, q20 = np.median(D, axis=2), np.quantile(D, .2, axis=2)
     ok = valid & (q20 > bar[:, None])
     return ok, mean
 
@@ -252,7 +253,7 @@ def gate_decide(a, W, g, P):
     jsel = np.argmax(P == new[:, None], 1)
     q = lambda x, z: np.quantile(x, z, axis=-1)
     m30s = m30[np.arange(B), 1 + jsel]
-    info = dict(fmean=Dp.mean(2), fq10=q(Dp, .1), fq90=q(Dp, .9), ok=ok, probe=probe, tried=tried(a, P, g),
+    info = dict(fmean=np.median(Dp, axis=2), fq10=q(Dp, .1), fq90=q(Dp, .9), ok=ok, probe=probe, tried=tried(a, P, g),
                 bar=bar, m30=np.stack([q(m30s, .1), q(m30s, .5), q(m30s, .9)], 1), _wm=wm, _D=D)
     return roll, new, info
 

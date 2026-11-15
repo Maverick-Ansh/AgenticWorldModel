@@ -16,7 +16,9 @@ What is LEARNED, per business: five Poisson rate heads on the KPI-tree edges,
     h   cancels / subs               sv  saves (discount inflow) / subs
 and a latent demand filter (day-of-week + AR(1) on smoothed log visits).
 
-Prior theta_lever ~ N(0, 1) and a Laplace posterior: a lever the founders never pulled keeps its prior
+Prior: the long-run log-effect of a lever at its typical intensity ~ N(0, 0.5^2), split over its three
+traces (a flat N(0,1) per trace made untried levers explode into exp(+-1.7) lognormal tails in E0
+diagnostics). Laplace posterior: a lever the founders never pulled keeps its prior
 width, so the model KNOWS it does not know what a save discount or a bundle will do. Deliberate
 misspecification (the sim has trial pools, pack holders returning, tenure buckets, gaming feedback; this
 model has none of them) keeps it from being the true simulator in disguise.
@@ -28,7 +30,8 @@ TAUS = (3., 14., 45.)
 K = len(LEVERS)
 NF = 1 + 3 * K
 PUP_SCALE = 30.                      # price-increase impulses, scaled so their traces are O(0.1-1)
-PRIOR_SD = 1.0
+PRIOR_EFFECT_SD = 0.5               # prior sd of the long-run log-effect at a lever's typical intensity
+LEVER_SCALE = dict(logpm=.15, pup=1., ads=1., promo=.3, cred=1.5, bundle=1., save_new=1., save_all=1., fix=1., listing=1.)
 HEADS = {'so': ('signups_org', 'visits', ['promo', 'listing']),
          'sa': ('signups_ad', 'visits_ad', []),
          'c': ('new_subs', 'sig_ewma', ['logpm', 'promo', 'cred', 'bundle', 'fix']),
@@ -117,7 +120,7 @@ class WorldModel:
             yy = np.where(w, y, 0.); lE = np.log(np.where(w, Ex, 1.)); w = w * 1.
             prec = np.full(NF, 1e6); prec[0] = 1 / 9.
             for l in rel:
-                prec[1 + LEVERS.index(l)::K] = 1 / PRIOR_SD ** 2
+                prec[1 + LEVERS.index(l)::K] = 3 * (LEVER_SCALE[l] / PRIOR_EFFECT_SD) ** 2   # split over 3 traces
             prec = np.broadcast_to(prec, (B, NF)).copy()
             mu0 = np.zeros((B, NF))
             mu0[:, 0] = np.log((yy.sum(1) + .5) / ((w * np.exp(lE)).sum(1) + 50.))
