@@ -17,7 +17,7 @@ MENU = """MOVES (code: what it does)
 PRICE+10 / PRICE-10 / PRICE+20 / PRICE-20: change the subscription list price
 ADS30 / ADS100: paid ads at $30 or $100 per day for 14 days
 PROMO20 / PROMO40: 20% or 40% off one-time credit packs for 14 days
-CREDITS1 / CREDITS2: more free credits for new signups at activation ($1.5 per signup per level)
+CREDITS1 / CREDITS2: more free credits for new signups at activation ($0.5 per signup per level)
 BUNDLE: include credits in every subscription ($400 setup)
 SAVE_NEW / SAVE_ALL: offer cancelling subscribers 50% off for 90 days (newer subscribers only / everyone)
 FIX_OAUTH: engineering fixes the OAuth login failures ($600)

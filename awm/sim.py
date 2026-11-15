@@ -18,7 +18,8 @@ Traps that mirror the post, mechanically:
   * OAuth bug: error rate e raises churn and lowers activation; the engineering fix lands after a
     geometric delay (p=1/12 per day) and cuts e by 80% ("OAuth errors per 1,000 calls fell by 80 percent").
   * ads: Gamma-like worlds buy clicks that never convert ("more than 100,000 clicks without a single
-    paying customer").
+    paying customer"); Alpha-like ad traffic converts at 0.5-2x organic. One E0 calibration pass
+    (before any gate run, then frozen) set these ranges; per-move harm base rates are in results/E0.json.
   * price: conversion responds at once, churn responds with a lag through the price-shock stock X.
 
 All noise comes from a pre-drawn tape z[world, day, channel], so forks are exactly paired and any day
