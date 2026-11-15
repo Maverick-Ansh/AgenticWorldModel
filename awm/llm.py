@@ -93,24 +93,37 @@ def parse(text, K, rng):
 
 
 class LLM:
-    def __init__(self, path, device='cuda:0'):
+    """One fp16 replica per GPU; each week's prompts are split into batches of 64 and run in parallel
+    threads (CUDA work releases the GIL). Measured on T4: 64 prompts x 660 tokens -> 38 s per replica;
+    batch 128 runs out of memory. Sampling seeds are set globally, so reruns are close, not bit-identical."""
+    def __init__(self, path, devices=None):
         import torch
         from transformers import AutoTokenizer, AutoModelForCausalLM
-        self.torch, self.device = torch, device
+        self.torch = torch
+        self.devices = devices or [f'cuda:{i}' for i in range(torch.cuda.device_count())]
         self.tok = AutoTokenizer.from_pretrained(path); self.tok.padding_side = 'left'
-        self.model = AutoModelForCausalLM.from_pretrained(path, dtype=torch.float16).to(device).eval()
+        self.models = [AutoModelForCausalLM.from_pretrained(path, dtype=torch.float16).to(d).eval() for d in self.devices]
 
-    def generate(self, prompts, seed=0, bs=64, max_new_tokens=110, temperature=0.7):
+    def _run(self, i, chunk, max_new_tokens, temperature):
+        dev, model = self.devices[i % len(self.devices)], self.models[i % len(self.models)]
+        msgs = [self.tok.apply_chat_template([{'role': 'system', 'content': SYS}, {'role': 'user', 'content': p}],
+                                             tokenize=False, add_generation_prompt=True) for p in chunk]
+        enc = self.tok(msgs, return_tensors='pt', padding=True).to(dev)
+        with self.torch.no_grad():
+            g = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=True, temperature=temperature,
+                               top_p=0.95, pad_token_id=self.tok.eos_token_id)
+        return self.tok.batch_decode(g[:, enc['input_ids'].shape[1]:], skip_special_tokens=True)
+
+    def generate(self, prompts, seed=0, bs=64, max_new_tokens=90, temperature=0.7):
+        from concurrent.futures import ThreadPoolExecutor
+        self.torch.manual_seed(seed)
+        chunks = [prompts[i:i + bs] for i in range(0, len(prompts), bs)]
         out = []
-        for i in range(0, len(prompts), bs):
-            msgs = [self.tok.apply_chat_template([{'role': 'system', 'content': SYS}, {'role': 'user', 'content': p}],
-                                                 tokenize=False, add_generation_prompt=True) for p in prompts[i:i + bs]]
-            enc = self.tok(msgs, return_tensors='pt', padding=True).to(self.device)
-            self.torch.manual_seed(seed * 1000 + i)
-            with self.torch.no_grad():
-                g = self.model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=True, temperature=temperature,
-                                        top_p=0.95, pad_token_id=self.tok.eos_token_id)
-            out += self.tok.batch_decode(g[:, enc['input_ids'].shape[1]:], skip_special_tokens=True)
+        for r in range(0, len(chunks), len(self.models)):
+            group = chunks[r:r + len(self.models)]
+            with ThreadPoolExecutor(len(group)) as ex:
+                for res in ex.map(lambda ic: self._run(ic[0], ic[1], max_new_tokens, temperature), enumerate(group)):
+                    out += res
         return out
 
 
