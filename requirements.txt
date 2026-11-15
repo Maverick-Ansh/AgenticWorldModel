@@ -1,0 +1,5 @@
+numpy>=1.26
+torch
+transformers>=4.45
+accelerate
+pytest
