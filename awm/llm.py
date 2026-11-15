@@ -23,6 +23,9 @@ SAVE_NEW / SAVE_ALL: offer cancelling subscribers 50% off for 90 days (newer sub
 FIX_OAUTH: engineering fixes the OAuth login failures ($600)
 LISTING: rewrite the store listing and landing copy ($200)
 NOOP: change nothing this week"""
+# Qwen2.5-3B answered "exactly 3 lines" with ONE line 99% of the time in the first full run (parse-fail
+# guard fired); a numbered list plus a prefilled "1." makes it continue to three.
+PREFILL = '1. '
 _PAT = re.compile(r'PRICE[+-](?:10|20)|ADS(?:30|100)|PROMO(?:20|40)|CREDITS[12]|BUNDLE|SAVE_NEW|SAVE_ALL|'
                   r'FIX_OAUTH|LISTING|NOOP')
 
@@ -72,7 +75,8 @@ def context_pack(v, c, g, H, log, lessons):
     if lessons:
         lines.append("LESSONS (accepted, ranked by track record): " + ' | '.join(lessons))
     lines += ["GUARDRAILS: one new move per week; credentials stay with the platform.", MENU,
-              'Reply with exactly 3 lines, best first: "<CODE> - <reason under 12 words>"']
+              'Reply as a numbered list of 3 DIFFERENT codes, best first:\n1. <CODE> - <reason under 12 words>\n'
+              '2. <CODE> - <reason>\n3. <CODE> - <reason>']
     return '\n'.join(lines)
 
 
@@ -107,7 +111,7 @@ class LLM:
     def _run(self, i, chunk, max_new_tokens, temperature):
         dev, model = self.devices[i % len(self.devices)], self.models[i % len(self.models)]
         msgs = [self.tok.apply_chat_template([{'role': 'system', 'content': SYS}, {'role': 'user', 'content': p}],
-                                             tokenize=False, add_generation_prompt=True) for p in chunk]
+                                             tokenize=False, add_generation_prompt=True) + PREFILL for p in chunk]
         enc = self.tok(msgs, return_tensors='pt', padding=True).to(dev)
         with self.torch.no_grad():
             g = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=True, temperature=temperature,
